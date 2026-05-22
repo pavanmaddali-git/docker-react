@@ -7,29 +7,43 @@ on:
     branches: [ main ]
 
 jobs:
-  test-and-build:
+  docker-ci:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
+      - name: Build Docker image from Dockerfile.dev
+        run: docker build -f Dockerfile.dev -t frontend-dev .
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Run tests inside Docker
+        run: docker run --rm frontend-dev npm test -- --watchAll=false --silent
 
-      - name: Run tests
-        run: npm test -- --watchAll=false --silent
-
-      - name: Build application
-        run: npm run build
+      - name: Build application inside Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -v /app/node_modules \
+            frontend-dev npm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: build
+
+      - name: Package build for deployment
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.AWS_REGION && secrets.AWS_EB_APP_NAME && secrets.AWS_EB_ENV_NAME }}
+        run: zip -r deploy.zip build
+
+      - name: Deploy to AWS Elastic Beanstalk
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.AWS_REGION && secrets.AWS_EB_APP_NAME && secrets.AWS_EB_ENV_NAME }}
+        uses: einaregilsson/beanstalk-deploy@v21
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ secrets.AWS_EB_APP_NAME }}
+          environment_name: ${{ secrets.AWS_EB_ENV_NAME }}
+          region: ${{ secrets.AWS_REGION }}
+          version_label: ${{ github.sha }}
+          deployment_package: deploy.zip
