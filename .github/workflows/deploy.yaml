@@ -13,22 +13,19 @@ jobs:
 
       - run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
 
-      - run: docker build -t cygnetops/react-test -f Dockerfile.dev .
+      - run: docker build -t Primary/react-test -f Dockerfile.dev .
 
-      - run: docker run -e CI=true cygnetops/react-test npm test
+      - run: docker run -e CI=true Primary/react-test npm test
 
       - name: Generate deployment package
         run: zip -r deploy.zip . -x '*.git*'
 
       - name: Deploy to EB
-        uses: pavanmaddali-git/docker-react@v21
-        with:
-          aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-          aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-          application_name: Frontend
-          environment_name: Frontend-env
-          existing_bucket_name: elasticbeanstalk-ap-southeast-2-546208175174
-          region: ap-southeast-2
-          version_label: ${{ github.sha }}
-          deployment_package: deploy.zip
+        run: |
+          pip install awsebcli
+          eb init Frontend --region ap-southeast-2 --platform docker
+          eb deploy Frontend-env
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
